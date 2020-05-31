@@ -9,22 +9,78 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r}
+library(tidyverse)
+library(janitor) 
+library(here)
+library(raster)
+library(rasterVis)
+library(foreign) # reading dbfs
+library(ggmap) # base layers
+library(sf) # shapefiles
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
+# LULC for 2019
+```{r}
+lulc_2019_raster <- raster(here("data", "lulc-2019", "LULC_2019tif.tif"))
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+lulc_2019_pts <- rasterToPoints(lulc_2019_raster)
+
+lulc_2019_df <- data.frame(lulc_2019_pts) %>% 
+  rename("lon" = "x",
+         "lat" = "y",
+         "value" = "LULC_2019tif")
+
+dbf_2019 <- read.dbf(here("data", "lulc-2019", "LULC_2019tif.tif.vat.dbf"),
+                as.is = FALSE) %>% 
+  clean_names()
+
+lulc_2019 <- inner_join(lulc_2019_df, dbf_2019, 
+                   by = "value") %>% 
+  filter(class %in% c("Palm Plantation", "Pineapple", "Coffee", 
+                      "Melina_Teak", "Primary Forest", "Secondary Forest"))
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+lulc_2019_plot <- ggplot() + 
+  geom_raster(data = lulc_2019, 
+              aes(x = lat,
+                  y = lon,
+                  fill = class)) +
+  theme_minimal() + 
+  labs(x = NULL,
+       y = NULL,
+       title = "LULC for 2019",
+       fill = NULL)
+```
+
+# Projected LULC for 2030
+```{r}
+lulc_2030_raster <- raster(here("data", "lulc-2030", "2030_FINAL1.tif"))
+
+lulc_2030_pts <- rasterToPoints(lulc_2030_raster)
+
+lulc_2030_df <- data.frame(lulc_2030_pts) %>% 
+  rename("lon" = "x",
+         "lat" = "y",
+         "value" = "X2030_FINAL1")
+
+dbf_2030 <- read.dbf(here("data", "lulc-2030", "2030_FINAL1.tif.vat.dbf"),
+                as.is = FALSE) %>% 
+  clean_names()
+
+lulc_2030 <- inner_join(lulc_2030_df, dbf_2030, 
+                   by = "value") %>% 
+    filter(class %in% c("Palm Plantation", "Pineapple", "Coffee", 
+                      "Melina_Teak", "Primary Forest", "Secondary Forest"))
+```
+
+## Cantons
+
+```{r}
+
+```
+
+
+
