@@ -6,81 +6,90 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
 ```
 
 ```{r}
-library(tidyverse)
+library(foreign) # reading dbfs
+library(ggmap) # base layer
+library(sf) # shapefiles
+library(raster) # raster
+library(rasterVis) # raster
+library(rgeos) # raster to polygons
 library(janitor) 
 library(here)
-library(raster)
-library(rasterVis)
-library(foreign) # reading dbfs
-library(ggmap) # base layers
-library(sf) # shapefiles
+library(tidyverse)
 ```
 
 
 # LULC for 2019
 ```{r}
-lulc_2019_raster <- raster(here("data", "lulc-2019", "LULC_2019tif.tif"))
+lulc_raster_raw <- raster(here("data", "lulc-2019", "LULC_2019tif.tif"))
 
-lulc_2019_pts <- rasterToPoints(lulc_2019_raster)
+lulc_raster <- aggregate(lulc_raster_raw, fact = 10)
 
-lulc_2019_df <- data.frame(lulc_2019_pts) %>% 
-  rename("lon" = "x",
-         "lat" = "y",
-         "value" = "LULC_2019tif")
+lulc_df <- as.data.frame(lulc_raster, xy = TRUE) %>% 
+  rename("value" = "LULC_2019tif")
 
 dbf_2019 <- read.dbf(here("data", "lulc-2019", "LULC_2019tif.tif.vat.dbf"),
                 as.is = FALSE) %>% 
   clean_names()
 
-lulc_2019 <- inner_join(lulc_2019_df, dbf_2019, 
+lulc <- inner_join(lulc_df, dbf_2019, 
                    by = "value") %>% 
   filter(class %in% c("Palm Plantation", "Pineapple", "Coffee", 
                       "Melina_Teak", "Primary Forest", "Secondary Forest"))
+
 ```
 
+## ROI 
 ```{r}
-lulc_2019_plot <- ggplot() + 
-  geom_raster(data = lulc_2019, 
-              aes(x = lat,
-                  y = lon,
-                  fill = class)) +
-  theme_minimal() + 
-  labs(x = NULL,
-       y = NULL,
-       title = "LULC for 2019",
-       fill = NULL)
-```
+# Create a polygon of the LULC boundaries
+roi_extent <- as(extent(lulc_raster), ('SpatialPolygons'))
 
-# Projected LULC for 2030
-```{r}
-lulc_2030_raster <- raster(here("data", "lulc-2030", "2030_FINAL1.tif"))
+lulc_reclass <- reclassify(lulc_raster,
+                                cbind(-Inf, Inf, 1))
 
-lulc_2030_pts <- rasterToPoints(lulc_2030_raster)
+roi_sp <- rasterToPolygons(lulc_reclass, dissolve = TRUE) 
 
-lulc_2030_df <- data.frame(lulc_2030_pts) %>% 
-  rename("lon" = "x",
-         "lat" = "y",
-         "value" = "X2030_FINAL1")
-
-dbf_2030 <- read.dbf(here("data", "lulc-2030", "2030_FINAL1.tif.vat.dbf"),
-                as.is = FALSE) %>% 
-  clean_names()
-
-lulc_2030 <- inner_join(lulc_2030_df, dbf_2030, 
-                   by = "value") %>% 
-    filter(class %in% c("Palm Plantation", "Pineapple", "Coffee", 
-                      "Melina_Teak", "Primary Forest", "Secondary Forest"))
+roi <- st_as_sf(roi_sp)
 ```
 
 ## Cantons
-
 ```{r}
+cantons_raw <- read_sf(dsn = here("data", "cantones-2014"), 
+                   layer = "Cantones2014ctm05") %>% 
+  clean_names() %>% 
+  dplyr::select("ncanton", "nprovincia", "hectares") %>% 
+  filter(ncanton %in% c("OSA", "GOLFITO", "COTO BRUS", 
+                        "BUENOS AIRES", "TALAMANCA", "CORREDORES"))
+
+## Crop to match amistosa corridor
+st_crs(cantons_raw) <- 4326
+st_crs(roi) <- 4326
+cantons <- st_intersection(cantons_raw, roi)
+
+plot(cantons)
 
 ```
 
+## `ggmap`
+```{r}
+amistosa <- get_map(location = c(lon = -83.15,
+                                   lat = 8.748),
+                      zoom = 9,
+                      maptype = "terrain-background",
+                      source = "google")
+```
+
+## Map for Proposal
+
+```{r}
+ggplot() + 
+  geom_sf(data = cantons,
+          color = "black")
+```
 
 
