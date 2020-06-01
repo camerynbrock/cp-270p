@@ -13,7 +13,6 @@ knitr::opts_chunk$set(echo = TRUE,
 
 ```{r}
 library(foreign) # reading dbfs
-library(ggmap) # base layer
 library(sf) # shapefiles
 library(raster) # raster
 library(rasterVis) # raster
@@ -30,7 +29,9 @@ lulc_raster_raw <- raster(here("data", "lulc-2019", "LULC_2019tif.tif"))
 
 lulc_raster <- aggregate(lulc_raster_raw, fact = 10)
 
-lulc_df <- as.data.frame(lulc_raster, xy = TRUE) %>% 
+lulc_pts <- rasterToPoints(lulc_raster_raw)
+
+lulc_df <- data.frame(lulc_pts) %>% 
   rename("value" = "LULC_2019tif")
 
 dbf_2019 <- read.dbf(here("data", "lulc-2019", "LULC_2019tif.tif.vat.dbf"),
@@ -39,8 +40,10 @@ dbf_2019 <- read.dbf(here("data", "lulc-2019", "LULC_2019tif.tif.vat.dbf"),
 
 lulc <- inner_join(lulc_df, dbf_2019, 
                    by = "value") %>% 
-  filter(class %in% c("Palm Plantation", "Pineapple", "Coffee", 
-                      "Melina_Teak", "Primary Forest", "Secondary Forest"))
+  filter(class %in% c("Palm Plantation", "Pineapple", "Coffee", "Melina_Teak"))
+
+ggplot(data = lulc, aes(x = x, y = y)) + 
+  geom_raster(aes(fill = class))
 
 ```
 
@@ -57,7 +60,7 @@ roi_sp <- rasterToPolygons(lulc_reclass, dissolve = TRUE)
 roi <- st_as_sf(roi_sp)
 ```
 
-## Cantons
+## Cantons (Costa )
 ```{r}
 cantons_raw <- read_sf(dsn = here("data", "cantones-2014"), 
                    layer = "Cantones2014ctm05") %>% 
@@ -78,22 +81,76 @@ ggplot() +
 cantons <- st_intersection(st_buffer(cantons_raw, 0), roi)
 # don't totally understand why it won't work without st_buffer, used that per this thread https://github.com/r-spatial/sf/issues/347
 
-plot(cantons)
+ggplot(cantons) + 
+  geom_sf(aes(fill = NCANTON),
+          alpha = 0.8)
 ```
 
-## `ggmap`
 ```{r}
+library(ggmap)
 amistosa <- get_map(location = c(lon = -83.15,
                                    lat = 8.748),
                       zoom = 9,
                       maptype = "terrain-background",
                       source = "google")
+
+# annoying work around to use ggmap with geom_sf per this thread: https://stackoverflow.com/questions/47749078/how-to-put-a-geom-sf-produced-map-on-top-of-a-ggmap-produced-raster/50844502#50844502
+
+ggmap_bbox <- function(map){
+  if(!inherits(map, "ggmap")) stop("map must be a ggmap object")
+   map_bbox <- setNames(unlist(attr(map, "bb")), 
+                       c("ymin", "xmin", "ymax", "xmax"))
+   bbox_3857 <- st_bbox(st_transform(st_as_sfc(st_bbox(map_bbox, crs = 4326)), 3857))
+  attr(map, "bb")$ll.lat <- bbox_3857["ymin"]
+  attr(map, "bb")$ll.lon <- bbox_3857["xmin"]
+  attr(map, "bb")$ur.lat <- bbox_3857["ymax"]
+  attr(map, "bb")$ur.lon <- bbox_3857["xmax"]
+  map
+}
+
+amistosa <- ggmap_bbox(amistosa)
 ```
+
 
 ## Map for Proposal
-
 ```{r}
+# have to do crs = 3857 for ggmap 
+cantons_3857 <- cantons %>% 
+  st_transform(3857)
 
+st_crs(cantons_3857)
+
+crs_3857 <- "+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs"
+
+lulc_raster_3857 <- projectRaster(lulc_raster_raw, 
+                                  crs = crs_3857, 
+                                  method = "ngb")
+
+lulc_pts_3857 <- rasterToPoints(lulc_raster_3857)
+
+lulc_df_3857 <- data.frame(lulc_pts_3857) %>% 
+  rename("value" = "LULC_2019tif")
+
+lulc_3857 <- inner_join(lulc_df_3857, dbf_2019, 
+                   by = "value")
+
+ggmap(amistosa) + 
+  coord_sf(crs = st_crs(3857)) + 
+  geom_raster(data = lulc_3857, aes(x = x, y = y,
+                               fill = class)) +
+  geom_sf(data = cantons_3857,
+          size = 0.2,
+          inherit.aes = FALSE) +
+  theme_minimal() + 
+  labs(x = NULL,
+       y = NULL,
+       fill = "Class")
+
+ggsave("roi-lulc.png",
+       width = 700,
+       height = 500,
+       unit = "px")
 ```
+
 
 
