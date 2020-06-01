@@ -88,9 +88,10 @@ ggplot(cantons) +
 
 ```{r}
 library(ggmap)
-amistosa <- get_map(location = c(lon = -83.15,
-                                   lat = 8.748),
-                      zoom = 9,
+amistosa <- get_map(location = c(left = -83.76,
+                                 bottom = 8.27,
+                                 right = -82.69,
+                                 top = 9.186),
                       maptype = "terrain-background",
                       source = "google")
 
@@ -132,25 +133,72 @@ lulc_df_3857 <- data.frame(lulc_pts_3857) %>%
   rename("value" = "LULC_2019tif")
 
 lulc_3857 <- inner_join(lulc_df_3857, dbf_2019, 
-                   by = "value")
+                   by = "value") %>% 
+  filter(!class == "Paramos")
+```
 
+
+```{r}
 ggmap(amistosa) + 
   coord_sf(crs = st_crs(3857)) + 
-  geom_raster(data = lulc_3857, aes(x = x, y = y,
-                               fill = class)) +
+  geom_raster(data = lulc_3857, 
+              aes(x = x, y = y,
+                  fill = class),
+              alpha = 0.9) +
   geom_sf(data = cantons_3857,
           size = 0.2,
+          alpha = 0,
           inherit.aes = FALSE) +
   theme_minimal() + 
+  scale_fill_discrete(labels = c("Coffee",
+                                 "Exposed Soil/Urban",
+                                 "Grassland/Pasture",
+                                 "Mangrove",
+                                 "Teak/Melina",
+                                 "Natural Palm",
+                                 "Palm Plantation",
+                                 "Pineapple",
+                                 "Primary Forest",
+                                 "Secondary Forest",
+                                 "Water",
+                                 "Wetland")) +
   labs(x = NULL,
        y = NULL,
        fill = "Class")
 
-ggsave("roi-lulc.png",
-       width = 700,
-       height = 500,
-       unit = "px")
+ggsave("roi-lulc.png")
 ```
 
+```{r}
+
+lulc_3857_crops <- lulc_3857 %>% 
+  filter(class %in% c("Pineapple", "Melina_Teak", "Coffee", "Palm Plantation"))
+
+ggmap(amistosa) + 
+  coord_sf(crs = st_crs(3857)) + 
+  geom_sf(data = cantons_3857,
+          size = 0.2,
+          alpha = 0.4,
+          inherit.aes = FALSE) +
+  geom_raster(data = lulc_3857_crops, 
+              aes(x = x, y = y,
+                  fill = class),
+              alpha = 0.9) +
+  geom_sf(data = cantons_3857,
+          size = 0.2,
+          alpha = 0,
+          inherit.aes = FALSE) +
+  theme_minimal() + 
+  scale_fill_discrete(labels = c("Coffee",
+                                 "Teak/Melina",
+                                 "Palm",
+                                 "Pineapple")) +
+  labs(x = NULL,
+       y = NULL,
+       fill = "Class")
+
+ggsave("roi-crops.png")
+
+```
 
 
