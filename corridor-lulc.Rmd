@@ -61,18 +61,24 @@ roi <- st_as_sf(roi_sp)
 ```{r}
 cantons_raw <- read_sf(dsn = here("data", "cantones-2014"), 
                    layer = "Cantones2014ctm05") %>% 
-  clean_names() %>% 
-  dplyr::select("ncanton", "nprovincia", "hectares") %>% 
-  filter(ncanton %in% c("OSA", "GOLFITO", "COTO BRUS", 
-                        "BUENOS AIRES", "TALAMANCA", "CORREDORES"))
+  st_transform(crs = 4326)
+
+st_crs(cantons_raw)
+st_crs(roi) <- st_crs(cantons_raw)
+
+ggplot() +
+  geom_sf(data = roi,
+          fill = "blue",
+          alpha = 0.5) +
+  geom_sf(data = cantons_raw,
+          fill = "red",
+          alpha = 0.5)
 
 ## Crop to match amistosa corridor
-st_crs(cantons_raw) <- 4326
-st_crs(roi) <- 4326
-cantons <- st_intersection(cantons_raw, roi)
+cantons <- st_intersection(st_buffer(cantons_raw, 0), roi)
+# don't totally understand why it won't work without st_buffer, used that per this thread https://github.com/r-spatial/sf/issues/347
 
 plot(cantons)
-
 ```
 
 ## `ggmap`
@@ -87,9 +93,7 @@ amistosa <- get_map(location = c(lon = -83.15,
 ## Map for Proposal
 
 ```{r}
-ggplot() + 
-  geom_sf(data = cantons,
-          color = "black")
+
 ```
 
 
